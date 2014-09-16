@@ -49,7 +49,7 @@ module OmniAuth
       end
 
       def authorize_params
-        options.authorize_params[:state] = "#{SecureRandom.hex(24)}:#{request.params[:state]}"
+        options.authorize_params[:state] = "#{SecureRandom.hex(24)}.#{request.params['state']}"
         params = options.authorize_params.merge(options.authorize_options.inject({}){|h,k| h[k.to_sym] = options[k] if options[k]; h})
         if OmniAuth.config.test_mode
           @env ||= {}
@@ -64,10 +64,17 @@ module OmniAuth
       end
 
       def callback_phase
+        session_value = session.delete('omniauth.state')
         if request.params['error'] || request.params['error_reason']
+          log(:info, "request.params['error'] = #{request.params['error']}")
+          log(:info, "request.params['error_reason'] = #{request.params['error_reason']}")
           raise CallbackError.new(request.params['error'], request.params['error_description'] || request.params['error_reason'], request.params['error_uri'])
         end
-        if !options.provider_ignores_state && (request.params['state'].to_s.empty? || request.params['state'] != session.delete('omniauth.state'))
+
+        if !options.provider_ignores_state && (request.params['state'].to_s.empty? || request.params['state'] != session_value)
+          log(:info, "request.params['state'] and session.delete('omniauth.state') are diferents")
+          log(:info, "request.params['state'] = #{request.params['state']}")
+          log(:info, "session.delete('omniauth.state') = #{session_value}")
           raise CallbackError.new(nil, :csrf_detected)
         end
 
@@ -76,12 +83,16 @@ module OmniAuth
 
         super
       rescue ::OAuth2::Error, CallbackError => e
+        log(:info, e)
         fail!(:invalid_credentials, e)
       rescue ::MultiJson::DecodeError => e
+        log(:info, e)
         fail!(:invalid_response, e)
       rescue ::Timeout::Error, ::Errno::ETIMEDOUT => e
+        log(:info, e)
         fail!(:timeout, e)
       rescue ::SocketError => e
+        log(:info, e)
         fail!(:failed_to_connect, e)
       end
 
